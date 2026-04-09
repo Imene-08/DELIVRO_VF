@@ -1,0 +1,383 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model abonnements {
+  id                    String                  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  admin_id              String                  @unique @db.Uuid
+  plan                  plan_abo                @default(starter)
+  prix_mensuel          Decimal                 @db.Decimal(8, 2)
+  statut                statut_abo?             @default(actif)
+  date_debut            DateTime                @default(dbgenerated("CURRENT_DATE")) @db.Date
+  date_echeance         DateTime                @db.Date
+  date_paiement         DateTime?               @db.Date
+  renouvellement_auto   Boolean?                @default(true)
+  note                  String?
+  cree_le               DateTime?               @default(now()) @db.Timestamptz(6)
+  modifie_le            DateTime?               @default(now()) @db.Timestamptz(6)
+  comptes               comptes                 @relation(fields: [admin_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  paiements_abonnements paiements_abonnements[]
+
+  @@index([admin_id], map: "idx_abo_admin")
+  @@index([date_echeance], map: "idx_abo_echeance")
+  @@index([statut], map: "idx_abo_statut")
+}
+
+model alertes_stock {
+  id         String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  produit_id String       @db.Uuid
+  niveau     niveau_stock
+  quantite   Int
+  message    String?
+  lu         Boolean?     @default(false)
+  admin_id   String       @db.Uuid
+  cree_le    DateTime?    @default(now()) @db.Timestamptz(6)
+  comptes    comptes      @relation(fields: [admin_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  produits   produits     @relation(fields: [produit_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([admin_id], map: "idx_alertes_admin")
+  @@index([lu], map: "idx_alertes_lu")
+  @@index([produit_id], map: "idx_alertes_produit")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model bons_livraison {
+  id                                         String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  numero_bon                                 BigInt         @default(autoincrement())
+  commande_id                                String         @db.Uuid
+  livreur_id                                 String         @db.Uuid
+  statut                                     statut_bon?    @default(en_attente)
+  client_nom                                 String?        @db.VarChar(200)
+  client_tel                                 String?        @db.VarChar(30)
+  client_adresse                             String?
+  client_region                              String?        @db.VarChar(100)
+  expediteur_nom                             String?        @db.VarChar(200)
+  expediteur_adresse                         String?
+  expediteur_tel                             String?        @db.VarChar(30)
+  date_prevue                                DateTime?      @db.Date
+  date_prise_en_charge                       DateTime?      @db.Timestamptz(6)
+  date_resolution                            DateTime?      @db.Timestamptz(6)
+  resultat                                   String?        @db.VarChar(10)
+  motif_retour                               String?
+  note_livreur                               String?
+  note_admin                                 String?
+  admin_id                                   String         @db.Uuid
+  cree_le                                    DateTime?      @default(now()) @db.Timestamptz(6)
+  modifie_le                                 DateTime?      @default(now()) @db.Timestamptz(6)
+  comptes_bons_livraison_admin_idTocomptes   comptes        @relation("bons_livraison_admin_idTocomptes", fields: [admin_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  commandes                                  commandes      @relation(fields: [commande_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  comptes_bons_livraison_livreur_idTocomptes comptes        @relation("bons_livraison_livreur_idTocomptes", fields: [livreur_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  transactions                               transactions[]
+
+  @@index([admin_id], map: "idx_bons_admin")
+  @@index([commande_id], map: "idx_bons_commande")
+  @@index([date_resolution], map: "idx_bons_date_res")
+  @@index([livreur_id], map: "idx_bons_livreur")
+  @@index([resultat], map: "idx_bons_resultat")
+  @@index([statut], map: "idx_bons_statut")
+}
+
+model categories {
+  id          String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nom         String     @db.VarChar(150)
+  description String?
+  admin_id    String     @db.Uuid
+  cree_le     DateTime?  @default(now()) @db.Timestamptz(6)
+  comptes     comptes    @relation(fields: [admin_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  produits    produits[]
+
+  @@index([admin_id], map: "idx_categories_admin")
+}
+
+model clients {
+  id        String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nom       String      @db.VarChar(200)
+  telephone String?     @db.VarChar(30)
+  email     String?     @db.VarChar(200)
+  adresse   String?
+  region    String?     @db.VarChar(100)
+  ville     String?     @db.VarChar(100)
+  note      String?
+  admin_id  String      @db.Uuid
+  cree_le   DateTime?   @default(now()) @db.Timestamptz(6)
+  comptes   comptes     @relation(fields: [admin_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  commandes commandes[]
+  factures  factures[]
+
+  @@index([admin_id], map: "idx_clients_admin")
+}
+
+model commandes {
+  id                                  String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  numero                              BigInt            @default(autoincrement())
+  client_id                           String?           @db.Uuid
+  client_nom                          String?           @db.VarChar(200)
+  client_tel                          String?           @db.VarChar(30)
+  client_adresse                      String?
+  client_region                       String?           @db.VarChar(100)
+  statut                              statut_commande?  @default(confirmee)
+  note                                String?
+  total_dt                            Decimal?          @default(0) @db.Decimal(12, 2)
+  cree_par                            String            @db.Uuid
+  admin_id                            String            @db.Uuid
+  cree_le                             DateTime?         @default(now()) @db.Timestamptz(6)
+  modifie_le                          DateTime?         @default(now()) @db.Timestamptz(6)
+  bons_livraison                      bons_livraison[]
+  comptes_commandes_admin_idTocomptes comptes           @relation("commandes_admin_idTocomptes", fields: [admin_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  clients                             clients?          @relation(fields: [client_id], references: [id], onUpdate: NoAction)
+  comptes_commandes_cree_parTocomptes comptes           @relation("commandes_cree_parTocomptes", fields: [cree_par], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  factures                            factures[]
+  lignes_commande                     lignes_commande[]
+  transactions                        transactions[]
+
+  @@index([admin_id], map: "idx_commandes_admin")
+  @@index([client_id], map: "idx_commandes_client")
+  @@index([cree_le], map: "idx_commandes_date")
+  @@index([statut], map: "idx_commandes_statut")
+}
+
+model comptes {
+  id                                                String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nom                                               String           @db.VarChar(150)
+  prenom                                            String?          @db.VarChar(150)
+  email                                             String           @unique @db.VarChar(200)
+  telephone                                         String?          @db.VarChar(30)
+  mot_de_passe                                      String
+  role                                              role_compte
+  statut                                            statut_compte?   @default(actif)
+  admin_parent_id                                   String?          @db.Uuid
+  cree_par_super                                    String?          @db.Uuid
+  cree_le                                           DateTime?        @default(now()) @db.Timestamptz(6)
+  modifie_le                                        DateTime?        @default(now()) @db.Timestamptz(6)
+  abonnements                                       abonnements?
+  alertes_stock                                     alertes_stock[]
+  bons_livraison_bons_livraison_admin_idTocomptes   bons_livraison[] @relation("bons_livraison_admin_idTocomptes")
+  bons_livraison_bons_livraison_livreur_idTocomptes bons_livraison[] @relation("bons_livraison_livreur_idTocomptes")
+  categories                                        categories[]
+  clients                                           clients[]
+  commandes_commandes_admin_idTocomptes             commandes[]      @relation("commandes_admin_idTocomptes")
+  commandes_commandes_cree_parTocomptes             commandes[]      @relation("commandes_cree_parTocomptes")
+  comptes                                           comptes?         @relation("comptesTocomptes", fields: [admin_parent_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  other_comptes                                     comptes[]        @relation("comptesTocomptes")
+  super_admins                                      super_admins?    @relation(fields: [cree_par_super], references: [id], onUpdate: NoAction)
+  factures                                          factures[]
+  livreurs_free                                     livreurs_free[]
+  produits                                          produits[]
+  transactions_transactions_admin_idTocomptes       transactions[]   @relation("transactions_admin_idTocomptes")
+  transactions_transactions_cree_parTocomptes       transactions[]   @relation("transactions_cree_parTocomptes")
+
+  @@index([admin_parent_id], map: "idx_comptes_parent")
+  @@index([role], map: "idx_comptes_role")
+  @@index([statut], map: "idx_comptes_statut")
+}
+
+model factures {
+  id             String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  numero_facture BigInt          @default(autoincrement())
+  commande_id    String          @db.Uuid
+  client_id      String?         @db.Uuid
+  client_nom     String?         @db.VarChar(200)
+  client_adresse String?
+  client_tel     String?         @db.VarChar(30)
+  montant_ht     Decimal         @db.Decimal(12, 2)
+  montant_total  Decimal         @db.Decimal(12, 2)
+  date_emission  DateTime?       @default(dbgenerated("CURRENT_DATE")) @db.Date
+  date_echeance  DateTime?       @db.Date
+  statut         statut_facture? @default(envoyee)
+  note           String?
+  admin_id       String          @db.Uuid
+  cree_le        DateTime?       @default(now()) @db.Timestamptz(6)
+  comptes        comptes         @relation(fields: [admin_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  clients        clients?        @relation(fields: [client_id], references: [id], onUpdate: NoAction)
+  commandes      commandes       @relation(fields: [commande_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  transactions   transactions[]
+
+  @@index([admin_id], map: "idx_factures_admin")
+  @@index([commande_id], map: "idx_factures_commande")
+  @@index([statut], map: "idx_factures_statut")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model lignes_commande {
+  id            String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  commande_id   String    @db.Uuid
+  produit_id    String    @db.Uuid
+  produit_nom   String?   @db.VarChar(250)
+  quantite      Int
+  prix_unitaire Decimal   @db.Decimal(12, 2)
+  sous_total    Decimal?  @default(dbgenerated("((quantite)::numeric * prix_unitaire)")) @db.Decimal(12, 2)
+  commandes     commandes @relation(fields: [commande_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  produits      produits  @relation(fields: [produit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([commande_id], map: "idx_lignes_commande")
+  @@index([produit_id], map: "idx_lignes_produit")
+}
+
+model livreurs_free {
+  id         String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  compte_id  String    @db.Uuid
+  disponible Boolean?  @default(true)
+  note       String?
+  cree_le    DateTime? @default(now()) @db.Timestamptz(6)
+  comptes    comptes   @relation(fields: [compte_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([compte_id], map: "idx_livreurs_free_compte")
+}
+
+model paiements_abonnements {
+  id             String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  abonnement_id  String        @db.Uuid
+  montant        Decimal       @db.Decimal(8, 2)
+  date_paie      DateTime      @default(dbgenerated("CURRENT_DATE")) @db.Date
+  methode        String?       @default("virement") @db.VarChar(50)
+  reference      String?       @db.VarChar(100)
+  note           String?
+  enregistre_par String?       @db.Uuid
+  cree_le        DateTime?     @default(now()) @db.Timestamptz(6)
+  abonnements    abonnements   @relation(fields: [abonnement_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  super_admins   super_admins? @relation(fields: [enregistre_par], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model produits {
+  id              String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  reference       String?           @db.VarChar(100)
+  nom             String            @db.VarChar(250)
+  description     String?
+  categorie_id    String?           @db.Uuid
+  attributs       Json?             @default("{}")
+  prix_achat      Decimal?          @default(0) @db.Decimal(12, 2)
+  prix_vente      Decimal           @db.Decimal(12, 2)
+  quantite_stock  Int               @default(0)
+  seuil_bas       Int               @default(5)
+  seuil_moyen     Int               @default(20)
+  seuil_plein     Int               @default(50)
+  niveau_stock    niveau_stock?     @default(dbgenerated("\nCASE\n    WHEN (quantite_stock = 0) THEN 'vide'::niveau_stock\n    WHEN (quantite_stock <= seuil_bas) THEN 'bas'::niveau_stock\n    WHEN (quantite_stock <= seuil_moyen) THEN 'moyen'::niveau_stock\n    ELSE 'plein'::niveau_stock\nEND"))
+  admin_id        String            @db.Uuid
+  cree_le         DateTime?         @default(now()) @db.Timestamptz(6)
+  modifie_le      DateTime?         @default(now()) @db.Timestamptz(6)
+  alertes_stock   alertes_stock[]
+  lignes_commande lignes_commande[]
+  comptes         comptes           @relation(fields: [admin_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  categories      categories?       @relation(fields: [categorie_id], references: [id], onUpdate: NoAction)
+
+  @@index([admin_id], map: "idx_produits_admin")
+  @@index([attributs], map: "idx_produits_attrs", type: Gin)
+  @@index([categorie_id], map: "idx_produits_cat")
+  @@index([niveau_stock], map: "idx_produits_niveau")
+  @@index([nom], map: "idx_produits_nom")
+}
+
+model super_admins {
+  id                    String                  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nom                   String                  @db.VarChar(150)
+  email                 String                  @unique @db.VarChar(200)
+  mot_de_passe          String
+  telephone             String?                 @db.VarChar(30)
+  cree_le               DateTime?               @default(now()) @db.Timestamptz(6)
+  comptes               comptes[]
+  paiements_abonnements paiements_abonnements[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model transactions {
+  id                                     String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  type                                   type_transaction
+  categorie                              cat_transaction
+  montant                                Decimal          @db.Decimal(12, 2)
+  description                            String?
+  commande_id                            String?          @db.Uuid
+  facture_id                             String?          @db.Uuid
+  bon_id                                 String?          @db.Uuid
+  date_operation                         DateTime         @default(dbgenerated("CURRENT_DATE")) @db.Date
+  cree_par                               String           @db.Uuid
+  admin_id                               String           @db.Uuid
+  cree_le                                DateTime?        @default(now()) @db.Timestamptz(6)
+  comptes_transactions_admin_idTocomptes comptes          @relation("transactions_admin_idTocomptes", fields: [admin_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  bons_livraison                         bons_livraison?  @relation(fields: [bon_id], references: [id], onUpdate: NoAction)
+  commandes                              commandes?       @relation(fields: [commande_id], references: [id], onUpdate: NoAction)
+  comptes_transactions_cree_parTocomptes comptes          @relation("transactions_cree_parTocomptes", fields: [cree_par], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  factures                               factures?        @relation(fields: [facture_id], references: [id], onUpdate: NoAction)
+
+  @@index([admin_id], map: "idx_transactions_admin")
+  @@index([categorie], map: "idx_transactions_cat")
+  @@index([date_operation], map: "idx_transactions_date")
+  @@index([type], map: "idx_transactions_type")
+}
+
+enum cat_transaction {
+  vente
+  facture
+  achat_stock
+  salaire
+  loyer
+  transport
+  publicite
+  autre
+}
+
+enum niveau_stock {
+  vide
+  bas
+  moyen
+  plein
+}
+
+enum plan_abo {
+  starter
+  pro
+  business
+}
+
+enum role_compte {
+  super_admin
+  admin
+  employe
+  livreur
+}
+
+enum statut_abo {
+  actif
+  en_retard
+  suspendu
+  annule
+}
+
+enum statut_bon {
+  en_attente
+  pris
+  livre
+  retour
+  annule
+}
+
+enum statut_commande {
+  brouillon
+  confirmee
+  en_livraison
+  livree
+  retour
+  annulee
+}
+
+enum statut_compte {
+  actif
+  inactif
+  suspendu
+}
+
+enum statut_facture {
+  brouillon
+  envoyee
+  payee
+  annulee
+}
+
+enum type_transaction {
+  revenu
+  depense
+}
