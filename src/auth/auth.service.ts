@@ -4,18 +4,20 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { PrismaClient, comptes } from '@prisma/client';
+import { comptes } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { PrismaService } from '../prisma/prisma.service';
+import { TokenBlacklistService } from './token-blacklist.service';
 
 @Injectable()
 export class AuthService {
-  private prisma: PrismaClient;
-
-  constructor(private jwtService: JwtService) {
-    this.prisma = new PrismaClient();
-  }
+  constructor(
+    private jwtService: JwtService,
+    private prisma: PrismaService,
+    private blacklist: TokenBlacklistService,
+  ) {}
 
   async validateUser(
     email: string,
@@ -100,6 +102,10 @@ export class AuthService {
       access_token: this.jwtService.sign(payload),
       user: result,
     };
+  }
+
+  logout(token: string): void {
+    this.blacklist.add(token);
   }
 
   async getProfile(userId: string) {

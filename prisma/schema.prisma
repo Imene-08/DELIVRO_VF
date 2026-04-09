@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model abonnements {
@@ -49,7 +50,7 @@ model bons_livraison {
   id                                         String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   numero_bon                                 BigInt         @default(autoincrement())
   commande_id                                String         @db.Uuid
-  livreur_id                                 String         @db.Uuid
+  livreur_id                                 String?        @db.Uuid
   statut                                     statut_bon?    @default(en_attente)
   client_nom                                 String?        @db.VarChar(200)
   client_tel                                 String?        @db.VarChar(30)
@@ -219,7 +220,7 @@ model lignes_commande {
 
 model livreurs_free {
   id         String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  compte_id  String    @db.Uuid
+  compte_id  String    @unique @db.Uuid
   disponible Boolean?  @default(true)
   note       String?
   cree_le    DateTime? @default(now()) @db.Timestamptz(6)

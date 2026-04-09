@@ -5,6 +5,8 @@ import {
   Body,
   UseGuards,
   Request,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
@@ -14,8 +16,10 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Roles } from './decorators/roles.decorator';
 import { RolesGuard } from './guards/roles.guard';
 import { role_compte } from '@prisma/client';
+import { Request as ExpressRequest } from 'express';
+import { ExtractJwt } from 'passport-jwt';
 
-interface AuthenticatedRequest {
+interface AuthenticatedRequest extends ExpressRequest {
   user: {
     userId: string;
     email: string;
@@ -38,6 +42,17 @@ export class AuthController {
   @ApiOperation({ summary: "Inscription d'un nouvel utilisateur" })
   async register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto);
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Déconnexion — invalide le token actuel' })
+  logout(@Request() req: AuthenticatedRequest) {
+    const token = ExtractJwt.fromAuthHeaderAsBearerToken()(req)!;
+    this.authService.logout(token);
+    return { message: 'Déconnecté avec succès' };
   }
 
   @Get('profile')
