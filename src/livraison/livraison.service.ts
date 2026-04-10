@@ -147,7 +147,6 @@ export class LivraisonService {
         where: { id: bonId },
         data: {
           livreur_id: livreurId,
-          statut: statut_bon.pris,
           date_prise_en_charge: new Date(),
         },
         include: {

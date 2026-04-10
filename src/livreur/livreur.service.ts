@@ -40,7 +40,7 @@ export class LivreurService {
       where: {
         id: bonId,
         livreur_id: livreurId,
-        statut: statut_bon.pris,
+        statut: statut_bon.en_attente,
       },
     });
 
@@ -48,23 +48,29 @@ export class LivreurService {
       throw new NotFoundException('Livraison non trouvée ou non assignée');
     }
 
-    const updated = await this.prisma.bons_livraison.update({
-      where: { id: bonId },
-      data: {
-        statut: statut_bon.pris,
-        date_prise_en_charge: new Date(),
-      },
-      include: {
-        commandes: {
-          select: {
-            id: true,
-            numero: true,
-            client_nom: true,
-            client_tel: true,
-            client_adresse: true,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const b = await tx.bons_livraison.update({
+        where: { id: bonId },
+        data: { statut: statut_bon.pris },
+        include: {
+          commandes: {
+            select: {
+              id: true,
+              numero: true,
+              client_nom: true,
+              client_tel: true,
+              client_adresse: true,
+            },
           },
         },
-      },
+      });
+
+      await tx.livreurs_free.updateMany({
+        where: { compte_id: livreurId },
+        data: { disponible: false },
+      });
+
+      return b;
     });
 
     return {
@@ -78,7 +84,7 @@ export class LivreurService {
       where: {
         id: bonId,
         livreur_id: livreurId,
-        statut: statut_bon.pris,
+        statut: statut_bon.en_attente,
       },
       include: {
         commandes: true,
@@ -144,10 +150,20 @@ export class LivreurService {
         data: { statut: statut_commande.livree },
       });
 
-      await tx.livreurs_free.updateMany({
-        where: { compte_id: livreurId },
-        data: { disponible: true },
+      const autresBonsActifs = await tx.bons_livraison.count({
+        where: {
+          livreur_id: livreurId,
+          statut: { in: [statut_bon.en_attente, statut_bon.pris] },
+          id: { not: bonId },
+        },
       });
+
+      if (autresBonsActifs === 0) {
+        await tx.livreurs_free.updateMany({
+          where: { compte_id: livreurId },
+          data: { disponible: true },
+        });
+      }
     });
 
     return {
@@ -188,10 +204,20 @@ export class LivreurService {
         data: { statut: statut_commande.retour },
       });
 
-      await tx.livreurs_free.updateMany({
-        where: { compte_id: livreurId },
-        data: { disponible: true },
+      const autresBonsActifs = await tx.bons_livraison.count({
+        where: {
+          livreur_id: livreurId,
+          statut: { in: [statut_bon.en_attente, statut_bon.pris] },
+          id: { not: bonId },
+        },
       });
+
+      if (autresBonsActifs === 0) {
+        await tx.livreurs_free.updateMany({
+          where: { compte_id: livreurId },
+          data: { disponible: true },
+        });
+      }
     });
 
     return {
