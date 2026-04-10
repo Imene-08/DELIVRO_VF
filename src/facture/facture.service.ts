@@ -34,7 +34,7 @@ export class FactureService {
           select: { id: true, numero: true, statut: true },
         },
         transactions: {
-          select: { id: true, montant: true, type: true, statut: true },
+          select: { id: true, montant: true, type: true },
         },
         _count: {
           select: { transactions: true },

@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Patch,
   Param,
   Query,
   UseGuards,
@@ -50,5 +51,14 @@ export class FactureController {
   @ApiOperation({ summary: 'Détail d\'une facture avec commande et transactions' })
   async findOne(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
     return this.factureService.findOne(req.user.userId, id);
+  }
+
+  @Patch('factures/:id/payer')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(role_compte.admin, role_compte.employe)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Marquer une facture comme payée et créer la transaction correspondante' })
+  async marquerPayee(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
+    return this.factureService.marquerPayee(id, req.user.userId, req.user.userId);
   }
 }
