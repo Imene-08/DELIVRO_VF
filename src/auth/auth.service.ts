@@ -11,8 +11,13 @@ import { RegisterDto } from './dto/register.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TokenBlacklistService } from './token-blacklist.service';
 
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+
 @Injectable()
 export class AuthService {
+  private readonly loginAttempts = new Map<string, { count: number; lockedUntil?: number }>();
+
   constructor(
     private jwtService: JwtService,
     private prisma: PrismaService,
@@ -36,11 +41,38 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto) {
+    const emailKey = loginDto.email.toLowerCase();
+    const now = Date.now();
+    const attempts = this.loginAttempts.get(emailKey);
+
+    if (attempts?.lockedUntil && now < attempts.lockedUntil) {
+      const remainingMin = Math.ceil((attempts.lockedUntil - now) / 60000);
+      throw new UnauthorizedException(
+        `Trop de tentatives échouées. Réessayez dans ${remainingMin} minute(s)`,
+      );
+    }
+
     const user = await this.validateUser(loginDto.email, loginDto.mot_de_passe);
 
     if (!user) {
+      const current = this.loginAttempts.get(emailKey) ?? { count: 0 };
+      const newCount = current.count + 1;
+
+      if (newCount >= LOGIN_MAX_ATTEMPTS) {
+        this.loginAttempts.set(emailKey, {
+          count: newCount,
+          lockedUntil: now + LOGIN_LOCK_DURATION_MS,
+        });
+        throw new UnauthorizedException(
+          'Trop de tentatives échouées. Compte bloqué pendant 15 minutes',
+        );
+      }
+
+      this.loginAttempts.set(emailKey, { count: newCount });
       throw new UnauthorizedException('Email ou mot de passe invalide');
     }
+
+    this.loginAttempts.delete(emailKey);
 
     if (user.statut !== 'actif') {
       throw new UnauthorizedException('Compte inactif ou suspendu');
@@ -105,7 +137,11 @@ export class AuthService {
   }
 
   logout(token: string): void {
-    this.blacklist.add(token);
+    const decoded = this.jwtService.decode(token) as { exp?: number } | null;
+    const expiresAt = decoded?.exp
+      ? decoded.exp * 1000
+      : Date.now() + 24 * 60 * 60 * 1000;
+    this.blacklist.add(token, expiresAt);
   }
 
   async getProfile(userId: string) {
