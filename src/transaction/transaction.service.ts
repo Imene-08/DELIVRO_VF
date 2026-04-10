@@ -154,26 +154,41 @@ export class TransactionService {
       }
     }
 
-    const transaction = await this.prisma.transactions.create({
-      data: {
-        type: dto.type,
-        categorie: dto.categorie,
-        montant: dto.montant,
-        description: dto.description,
-        commande_id: dto.commande_id,
-        facture_id: dto.facture_id,
-        date_operation: dto.date_operation ? new Date(dto.date_operation) : new Date(),
-        cree_par: userId,
-        admin_id: adminId,
-      },
-      include: {
-        commandes: {
-          select: { id: true, numero: true },
+    const transaction = await this.prisma.$transaction(async (tx) => {
+      const t = await tx.transactions.create({
+        data: {
+          type: dto.type,
+          categorie: dto.categorie,
+          montant: dto.montant,
+          description: dto.description,
+          commande_id: dto.commande_id,
+          facture_id: dto.facture_id,
+          date_operation: dto.date_operation ? new Date(dto.date_operation) : new Date(),
+          cree_par: userId,
+          admin_id: adminId,
         },
-        factures: {
-          select: { id: true, numero_facture: true },
+        include: {
+          commandes: {
+            select: { id: true, numero: true },
+          },
+          factures: {
+            select: { id: true, numero_facture: true },
+          },
         },
-      },
+      });
+
+      if (
+        dto.type === type_transaction.revenu &&
+        dto.categorie === cat_transaction.facture &&
+        dto.facture_id
+      ) {
+        await tx.factures.update({
+          where: { id: dto.facture_id },
+          data: { statut: statut_facture.payee },
+        });
+      }
+
+      return t;
     });
 
     return {

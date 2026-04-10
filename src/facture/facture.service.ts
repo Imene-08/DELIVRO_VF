@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { statut_facture } from '@prisma/client';
+import { statut_facture, type_transaction, cat_transaction } from '@prisma/client';
 
 @Injectable()
 export class FactureService {
@@ -80,5 +80,44 @@ export class FactureService {
     }
 
     return facture;
+  }
+
+  async marquerPayee(factureId: string, adminId: string, userId: string) {
+    const facture = await this.prisma.factures.findFirst({
+      where: { id: factureId, admin_id: adminId },
+    });
+
+    if (!facture) {
+      throw new NotFoundException('Facture non trouvée');
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.factures.update({
+        where: { id: factureId },
+        data: { statut: statut_facture.payee },
+      });
+
+      const transaction = await tx.transactions.create({
+        data: {
+          type: type_transaction.revenu,
+          categorie: cat_transaction.facture,
+          montant: facture.montant_total,
+          description: `Paiement facture ${facture.numero_facture}`,
+          facture_id: factureId,
+          commande_id: facture.commande_id,
+          date_operation: new Date(),
+          cree_par: userId,
+          admin_id: adminId,
+        },
+      });
+
+      return { facture: updated, transaction };
+    });
+
+    return {
+      message: 'Facture marquée comme payée',
+      facture: result.facture,
+      transaction: result.transaction,
+    };
   }
 }
