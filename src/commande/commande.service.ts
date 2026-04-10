@@ -60,13 +60,6 @@ export class CommandeService {
             prix_unitaire: ligne.prix_unitaire,
           },
         });
-
-        await tx.produits.update({
-          where: { id: ligne.produit_id },
-          data: {
-            quantite_stock: { decrement: ligne.quantite },
-          },
-        });
       }
 
       return cmd;
@@ -226,6 +219,13 @@ export class CommandeService {
       });
 
       if (dto.statut === statut_commande.confirmee) {
+        for (const ligne of cmd.lignes_commande) {
+          await tx.produits.update({
+            where: { id: ligne.produit_id },
+            data: { quantite_stock: { decrement: ligne.quantite } },
+          });
+        }
+
         const total = cmd.lignes_commande.reduce(
           (sum, ligne) => sum + Number(ligne.sous_total || ligne.quantite * Number(ligne.prix_unitaire)),
           0,
@@ -247,6 +247,27 @@ export class CommandeService {
         });
       }
 
+      if (
+        dto.statut === statut_commande.annulee &&
+        commande.statut !== statut_commande.brouillon
+      ) {
+        for (const ligne of cmd.lignes_commande) {
+          await tx.produits.update({
+            where: { id: ligne.produit_id },
+            data: { quantite_stock: { increment: ligne.quantite } },
+          });
+        }
+      }
+
+      if (dto.statut === statut_commande.retour) {
+        for (const ligne of cmd.lignes_commande) {
+          await tx.produits.update({
+            where: { id: ligne.produit_id },
+            data: { quantite_stock: { increment: ligne.quantite } },
+          });
+        }
+      }
+
       return cmd;
     });
 
@@ -259,7 +280,6 @@ export class CommandeService {
   async remove(adminId: string, commandeId: string) {
     const commande = await this.prisma.commandes.findFirst({
       where: { id: commandeId, admin_id: adminId },
-      include: { lignes_commande: true },
     });
 
     if (!commande) {
@@ -271,15 +291,6 @@ export class CommandeService {
     }
 
     await this.prisma.$transaction(async (tx) => {
-      for (const ligne of commande.lignes_commande) {
-        await tx.produits.update({
-          where: { id: ligne.produit_id },
-          data: {
-            quantite_stock: { increment: ligne.quantite },
-          },
-        });
-      }
-
       await tx.lignes_commande.deleteMany({
         where: { commande_id: commandeId },
       });
