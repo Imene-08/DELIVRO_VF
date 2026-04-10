@@ -1,10 +1,11 @@
+
 import {
   Injectable,
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { role_compte, statut_abo, plan_abo, statut_compte } from '@prisma/client';
+import { role_compte, statut_abo, plan_abo, statut_compte, statut_bon } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { CreateAdminDto } from './dto/create-admin.dto';
 
@@ -77,7 +78,7 @@ export class SuperAdminService {
           admin_id: compte.id,
           plan: dto.plan,
           prix_mensuel: dto.prix_mensuel,
-          statut: dto.statut_abonnement ?? statut_abo.actif,
+          statut: dto.statut_abonnement ?? statut_abo.en_retard,
           date_debut: dto.date_debut ? new Date(dto.date_debut) : new Date(),
           date_echeance: new Date(dto.date_echeance),
           renouvellement_auto: dto.renouvellement_auto ?? true,
@@ -187,7 +188,7 @@ export class SuperAdminService {
         where: { role: role_compte.admin, statut: statut_compte.actif },
       }),
       this.prisma.bons_livraison.count({
-        where: { statut: { in: ['en_attente', 'pris'] } },
+        where: { statut: { in: [statut_bon.en_attente, statut_bon.pris] } },
       }),
       this.prisma.bons_livraison.count({ where: { statut: 'livre' } }),
       this.prisma.abonnements.aggregate({
@@ -351,7 +352,7 @@ export class SuperAdminService {
 
     return {
       total: livreurs.length,
-      disponibles: livreurs.filter((l) => l.livreurs_free?.disponible).length,
+      disponibles: livreurs.filter((l) => l.livreurs_free?.[0]?.disponible).length,
       en_livraison: livreurs.filter(
         (l) =>
           l.bons_livraison_bons_livraison_livreur_idTocomptes.length > 0,
@@ -362,7 +363,7 @@ export class SuperAdminService {
         email: l.email,
         telephone: l.telephone,
         statut: l.statut,
-        disponible: l.livreurs_free?.disponible ?? true,
+        disponible: l.livreurs_free?.[0]?.disponible ?? true,
         admin_parent: l.comptes
           ? { id: l.admin_parent_id, nom: l.comptes.nom, email: l.comptes.email }
           : null,

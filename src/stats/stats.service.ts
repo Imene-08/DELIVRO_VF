@@ -7,54 +7,52 @@ export class StatsService {
   constructor(private prisma: PrismaService) {}
 
   async getStatsByRegion(adminId: string) {
-    const commandes = await this.prisma.commandes.groupBy({
-      by: ['client_region'],
+    const rows = await this.prisma.commandes.groupBy({
+      by: ['client_region', 'statut'],
       where: {
         admin_id: adminId,
         client_region: { not: null },
       },
       _count: { id: true },
       _sum: { total_dt: true },
-      _avg: { total_dt: true },
     });
 
-    const details = await Promise.all(
-      commandes.map(async (c) => {
-        const commandesRegion = await this.prisma.commandes.findMany({
-          where: {
-            admin_id: adminId,
-            client_region: c.client_region,
-          },
-          select: {
-            statut: true,
-          },
-        });
+    const regionMap = new Map<string, {
+      total: number;
+      chiffre_affaires: number;
+      statuts: Partial<Record<statut_commande, number>>;
+    }>();
 
-        const livrees = commandesRegion.filter((cmd) => cmd.statut === statut_commande.livree).length;
-        const enCours = commandesRegion.filter(
-          (cmd) =>
-            cmd.statut === statut_commande.en_livraison ||
-            cmd.statut === statut_commande.confirmee,
-        ).length;
-        const annulees = commandesRegion.filter(
-          (cmd) =>
-            cmd.statut === statut_commande.annulee || cmd.statut === statut_commande.retour,
-        ).length;
+    for (const row of rows) {
+      const region = row.client_region!;
+      if (!regionMap.has(region)) {
+        regionMap.set(region, { total: 0, chiffre_affaires: 0, statuts: {} });
+      }
+      const r = regionMap.get(region)!;
+      r.total += row._count.id;
+      r.chiffre_affaires += Number(row._sum.total_dt || 0);
+      if (row.statut) {
+        r.statuts[row.statut] = row._count.id;
+      }
+    }
 
-        return {
-          region: c.client_region,
-          total_commandes: c._count.id,
-          chiffre_affaires: Number(c._sum.total_dt || 0),
-          panier_moyen: Number(c._avg.total_dt?.toFixed(2) || 0),
-          repartition_statuts: {
-            livrees,
-            en_cours: enCours,
-            annulees,
-            brouillon: commandesRegion.filter((cmd) => cmd.statut === statut_commande.brouillon).length,
-          },
-        };
-      }),
-    );
+    const details = Array.from(regionMap.entries()).map(([region, data]) => {
+      const panier_moyen = data.total > 0 ? data.chiffre_affaires / data.total : 0;
+      const s = data.statuts;
+
+      return {
+        region,
+        total_commandes: data.total,
+        chiffre_affaires: Number(data.chiffre_affaires.toFixed(2)),
+        panier_moyen: Number(panier_moyen.toFixed(2)),
+        repartition_statuts: {
+          livrees: s[statut_commande.livree] ?? 0,
+          en_cours: (s[statut_commande.en_livraison] ?? 0) + (s[statut_commande.confirmee] ?? 0),
+          annulees: (s[statut_commande.annulee] ?? 0) + (s[statut_commande.retour] ?? 0),
+          brouillon: s[statut_commande.brouillon] ?? 0,
+        },
+      };
+    });
 
     return {
       total_regions: details.length,
