@@ -1,68 +1,64 @@
-import {
-  IsString,
-  IsOptional,
-  IsNumber,
-  IsUUID,
-  IsJSON,
-  Min,
-} from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsString, IsOptional, IsNumber, IsUUID, IsObject, Min } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateProduitDto {
-  @ApiProperty({ example: 'PROD-001', required: false })
-  @IsOptional()
+  @ApiProperty({ example: 'PROD-001' })
   @IsString()
-  reference?: string;
+  reference: string;
 
-  @ApiProperty({ example: 'iPhone 15 Pro' })
+  @ApiProperty({ example: 'Huile d\'olive 1L' })
   @IsString()
   nom: string;
 
-  @ApiProperty({ example: 'Description du produit', required: false })
+  @ApiPropertyOptional({ example: 'Huile d\'olive extra vierge' })
   @IsOptional()
   @IsString()
   description?: string;
 
-  @ApiProperty({ example: 'cat-uuid', required: false })
+  @ApiPropertyOptional({ example: 'cat-uuid' })
   @IsOptional()
   @IsUUID()
   categorie_id?: string;
 
-  @ApiProperty({ example: { couleur: 'noir', taille: '128GB' }, required: false })
-  @IsOptional()
-  attributs?: Record<string, any>;
-
-  @ApiProperty({ example: 800.5, required: false })
+  @ApiPropertyOptional({ example: 8.5 })
   @IsOptional()
   @IsNumber()
   @Min(0)
   prix_achat?: number;
 
-  @ApiProperty({ example: 999.99 })
+  @ApiProperty({ example: 12.99 })
   @IsNumber()
   @Min(0)
   prix_vente: number;
 
-  @ApiProperty({ example: 50 })
+  @ApiProperty({ example: 100 })
   @IsNumber()
   @Min(0)
   quantite_stock: number;
 
-  @ApiProperty({ example: 5, required: false })
+  @ApiPropertyOptional({ example: 5 })
   @IsOptional()
   @IsNumber()
   @Min(0)
   seuil_bas?: number;
 
-  @ApiProperty({ example: 20, required: false })
+  @ApiPropertyOptional({ example: 20 })
   @IsOptional()
   @IsNumber()
   @Min(0)
   seuil_moyen?: number;
 
-  @ApiProperty({ example: 50, required: false })
+  @ApiPropertyOptional({ example: 50 })
   @IsOptional()
   @IsNumber()
   @Min(0)
   seuil_plein?: number;
+
+  @ApiPropertyOptional({
+    example: { couleur: 'rouge', taille: 'M', poids: '500g', matiere: 'coton' },
+    description: 'Attributs libres JSONB (couleur, taille, poids, matière, etc.)',
+  })
+  @IsOptional()
+  @IsObject()
+  attributs?: Record<string, unknown>;
 }

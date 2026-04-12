@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Delete,
   Body,
@@ -19,34 +20,22 @@ import { role_compte, niveau_stock } from '@prisma/client';
 import { CreateProduitDto } from './dto/create-produit.dto';
 import { UpdateProduitDto } from './dto/update-produit.dto';
 import { UpdateStockDto } from './dto/update-stock.dto';
+import { CreateCategorieDto } from './dto/create-categorie.dto';
 
 interface AuthenticatedRequest {
-  user: {
-    userId: string;
-    email: string;
-    role: role_compte;
-  };
+  user: { userId: string; email: string; role: role_compte };
 }
 
-@ApiTags('Admin - Produits & Stock')
-@Controller('admin')
+@ApiTags('Produits & Stock')
+@ApiBearerAuth('Bearer')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(role_compte.admin, role_compte.employe)
+@Controller('produits')
 export class ProduitController {
   constructor(private produitService: ProduitService) {}
 
-  @Post('produits')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(role_compte.admin)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Créer un produit' })
-  async create(@Body() dto: CreateProduitDto, @Request() req: AuthenticatedRequest) {
-    return this.produitService.create(req.user.userId, dto);
-  }
-
-  @Get('produits')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(role_compte.admin, role_compte.employe)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Liste des produits (filtrée par admin)' })
+  @Get()
+  @ApiOperation({ summary: 'Lister produits (filtre: niveau, catégorie)' })
   @ApiQuery({ name: 'categorieId', required: false })
   @ApiQuery({ name: 'niveau', enum: niveau_stock, required: false })
   @ApiQuery({ name: 'search', required: false })
@@ -56,84 +45,56 @@ export class ProduitController {
     @Query('niveau') niveau?: niveau_stock,
     @Query('search') search?: string,
   ) {
-    return this.produitService.findAll(req.user.userId, { categorieId, niveau, search });
+    return this.produitService.findAll(req.user.userId, req.user.role, { categorieId, niveau, search });
   }
 
-  @Get('produits/:id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(role_compte.admin, role_compte.employe)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Détail d\'un produit avec alertes' })
-  async findOne(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
-    return this.produitService.findOne(req.user.userId, id);
+  @Post()
+  @ApiOperation({ summary: 'Créer un produit (attributs JSONB libres)' })
+  async create(@Body() dto: CreateProduitDto, @Request() req: AuthenticatedRequest) {
+    return this.produitService.create(req.user.userId, req.user.role, dto);
   }
 
-  @Patch('produits/:id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(role_compte.admin)
-  @ApiBearerAuth()
+  @Put(':id')
   @ApiOperation({ summary: 'Modifier un produit' })
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateProduitDto,
     @Request() req: AuthenticatedRequest,
   ) {
-    return this.produitService.update(req.user.userId, id, dto);
+    return this.produitService.update(req.user.userId, req.user.role, id, dto);
   }
 
-  @Delete('produits/:id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(role_compte.admin)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Supprimer un produit' })
-  async remove(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
-    return this.produitService.remove(req.user.userId, id);
-  }
-
-  @Get('stock')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(role_compte.admin, role_compte.employe)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Stock avec niveaux visuels (vide/bas/moyen/plein)' })
-  async getStock(@Request() req: AuthenticatedRequest) {
-    return this.produitService.getStockWithLevels(req.user.userId);
-  }
-
-  @Patch('produits/:id/stock')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(role_compte.admin, role_compte.employe)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Ajouter/retirer du stock (+/- quantité)' })
+  @Patch(':id/stock')
+  @ApiOperation({ summary: 'Ajuster la quantité (+/-)' })
   async updateStock(
     @Param('id') id: string,
     @Body() dto: UpdateStockDto,
     @Request() req: AuthenticatedRequest,
   ) {
-    return this.produitService.updateStock(req.user.userId, id, dto);
+    return this.produitService.updateStock(req.user.userId, req.user.role, id, dto);
   }
 
-  @Get('alertes-stock')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(role_compte.admin, role_compte.employe)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Liste des alertes stock' })
-  @ApiQuery({ name: 'lu', type: Boolean, required: false })
-  @ApiQuery({ name: 'niveau', enum: niveau_stock, required: false })
-  async getAlertes(
-    @Request() req: AuthenticatedRequest,
-    @Query('lu') lu?: string,
-    @Query('niveau') niveau?: niveau_stock,
-  ) {
-    const parsedLu = lu === 'true' ? true : lu === 'false' ? false : undefined;
-    return this.produitService.getAlertesStock(req.user.userId, { lu: parsedLu, niveau });
+  @Delete(':id')
+  @ApiOperation({ summary: 'Supprimer un produit' })
+  async remove(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
+    return this.produitService.remove(req.user.userId, req.user.role, id);
   }
 
-  @Patch('alertes-stock/:id/lu')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(role_compte.admin, role_compte.employe)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Marquer une alerte comme lue' })
-  async marquerAlerteLue(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
-    return this.produitService.marquerAlerteLue(req.user.userId, id);
+  @Get('alertes')
+  @ApiOperation({ summary: 'Alertes stock non lues' })
+  async getAlertes(@Request() req: AuthenticatedRequest) {
+    return this.produitService.getAlertesStock(req.user.userId, req.user.role, { lu: false });
+  }
+
+  @Get('categories')
+  @ApiOperation({ summary: 'Lister les catégories' })
+  async getCategories(@Request() req: AuthenticatedRequest) {
+    return this.produitService.findAllCategories(req.user.userId, req.user.role);
+  }
+
+  @Post('categories')
+  @ApiOperation({ summary: 'Créer une catégorie' })
+  async createCategorie(@Body() dto: CreateCategorieDto, @Request() req: AuthenticatedRequest) {
+    return this.produitService.createCategorie(req.user.userId, req.user.role, dto);
   }
 }

@@ -33,6 +33,7 @@ model bons_livraison {
   expediteur_adresse                       String?
   expediteur_telephone                     String?               @db.VarChar(30)
   statut                                   statut_bon?           @default(en_attente)
+  motif_retour                             String?
   note_livraison                           String?
   date_livraison_prevue                    DateTime?             @db.Date
   date_livraison_reelle                    DateTime?             @db.Timestamptz(6)
@@ -103,9 +104,9 @@ model comptes {
   role                                            role_compte
   statut                                          statut_compte?        @default(actif)
   admin_parent_id                                 String?               @db.Uuid
-  cree_par                                        String?               @db.Uuid
   cree_le                                         DateTime?             @default(now()) @db.Timestamptz(6)
   modifie_le                                      DateTime?             @default(now()) @db.Timestamptz(6)
+  abonnements                                     abonnements?
   bons_livraison_bons_livraison_admin_idTocomptes bons_livraison[]      @relation("bons_livraison_admin_idTocomptes")
   categories                                      categories[]
   clients                                         clients[]
@@ -113,7 +114,6 @@ model comptes {
   commandes_commandes_cree_parTocomptes           commandes[]           @relation("commandes_cree_parTocomptes")
   comptes                                         comptes?              @relation("comptesTocomptes", fields: [admin_parent_id], references: [id], onUpdate: NoAction)
   other_comptes                                   comptes[]             @relation("comptesTocomptes")
-  super_admins                                    super_admins?         @relation(fields: [cree_par], references: [id], onUpdate: NoAction)
   factures                                        factures[]
   lieux                                           lieux[]
   livraisons_livreurs                             livraisons_livreurs[]
@@ -123,6 +123,19 @@ model comptes {
 
   @@index([role], map: "idx_comptes_role")
   @@index([statut], map: "idx_comptes_statut")
+}
+
+model abonnements {
+  id            String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  admin_id      String            @unique @db.Uuid
+  plan          plan_abonnement
+  prix_mensuel  Decimal           @db.Decimal(12, 2)
+  statut        statut_abonnement @default(actif)
+  date_debut    DateTime          @default(now()) @db.Timestamptz(6)
+  date_echeance DateTime          @db.Timestamptz(6)
+  cree_le       DateTime?         @default(now()) @db.Timestamptz(6)
+  modifie_le    DateTime?         @default(now()) @db.Timestamptz(6)
+  comptes       comptes           @relation(fields: [admin_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 model factures {
@@ -168,6 +181,7 @@ model produits {
   seuil_bas       Int               @default(5)
   seuil_moyen     Int               @default(20)
   seuil_plein     Int               @default(50)
+  attributs       Json?
   niveau_actuel   niveau_stock?     @default(dbgenerated("\nCASE\n    WHEN (quantite_stock = 0) THEN 'vide'::niveau_stock\n    WHEN (quantite_stock <= seuil_bas) THEN 'bas'::niveau_stock\n    WHEN (quantite_stock <= seuil_moyen) THEN 'moyen'::niveau_stock\n    ELSE 'plein'::niveau_stock\nEND"))
   categorie_id    String?           @db.Uuid
   lieu_id         String?           @db.Uuid
@@ -182,15 +196,6 @@ model produits {
 
   @@index([admin_id], map: "idx_produits_admin")
   @@index([niveau_actuel], map: "idx_produits_niveau")
-}
-
-model super_admins {
-  id           String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  nom          String    @db.VarChar(100)
-  email        String    @unique @db.VarChar(150)
-  mot_de_passe String
-  cree_le      DateTime? @default(now()) @db.Timestamptz(6)
-  comptes      comptes[]
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -234,6 +239,8 @@ model livraisons_livreurs {
   comptes        comptes        @relation(fields: [livreur_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
 enum niveau_stock {
   vide
   bas
@@ -242,6 +249,7 @@ enum niveau_stock {
 }
 
 enum role_compte {
+  super_admin
   admin
   employe
   livreur
@@ -251,6 +259,7 @@ enum statut_bon {
   en_attente
   en_cours
   livre
+  retour
   echoue
 }
 
@@ -260,6 +269,7 @@ enum statut_commande {
   en_preparation
   en_livraison
   livree
+  retour
   annulee
 }
 
@@ -288,4 +298,16 @@ enum categorie_transaction {
   loyer
   transport
   autre
+}
+
+enum plan_abonnement {
+  starter
+  pro
+  business
+}
+
+enum statut_abonnement {
+  actif
+  inactif
+  suspendu
 }

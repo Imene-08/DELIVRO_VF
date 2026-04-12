@@ -2,69 +2,62 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
-  ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { statut_bon, statut_commande, role_compte } from '@prisma/client';
+import {
+  statut_bon,
+  statut_commande,
+  type_transaction,
+  categorie_transaction,
+} from '@prisma/client';
 import { CreateLivraisonDto } from './dto/create-livraison.dto';
+import { ResultatLivraisonDto, ResultatLivraison } from './dto/resultat-livraison.dto';
 
 @Injectable()
 export class LivraisonService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(adminId: string, options?: { statut?: statut_bon; livreurId?: string }) {
+  async findAll(userId: string, role: string, options?: { statut?: statut_bon; livreurId?: string }) {
+    const adminId = await this.prisma.resolveAdminId(userId, role);
     const where: any = { admin_id: adminId };
 
-    if (options?.statut) {
-      where.statut = options.statut;
-    }
-
+    if (options?.statut) where.statut = options.statut;
     if (options?.livreurId) {
-      where.livreur_id = options.livreurId;
+      where.livraisons_livreurs = { some: { livreur_id: options.livreurId } };
     }
 
-    const bons = await this.prisma.bons_livraison.findMany({
+    return this.prisma.bons_livraison.findMany({
       where,
       include: {
         commandes: {
-          select: {
-            id: true,
-            numero: true,
-            client_nom: true,
-            client_tel: true,
-            client_adresse: true,
-            client_region: true,
+          include: {
+            clients: { select: { id: true, nom: true, telephone: true, adresse: true, ville: true } },
           },
         },
-        comptes_bons_livraison_livreur_idTocomptes: {
-          select: {
-            id: true,
-            nom: true,
-            prenom: true,
-            telephone: true,
-          },
+        livraisons_livreurs: {
+          include: { comptes: { select: { id: true, nom: true, prenom: true, telephone: true } } },
         },
       },
       orderBy: { cree_le: 'desc' },
     });
-
-    return bons;
   }
 
-  async create(adminId: string, userId: string, dto: CreateLivraisonDto) {
+  async create(userId: string, role: string, dto: CreateLivraisonDto) {
+    const adminId = await this.prisma.resolveAdminId(userId, role);
+
     const commande = await this.prisma.commandes.findFirst({
       where: { id: dto.commande_id, admin_id: adminId },
       include: {
-        clients: true,
+        clients: { select: { nom: true, telephone: true, adresse: true, ville: true } },
+        lignes_commande: true,
       },
     });
 
-    if (!commande) {
-      throw new NotFoundException('Commande non trouvée');
-    }
+    if (!commande) throw new NotFoundException('Commande non trouvée');
 
     if (commande.statut !== statut_commande.confirmee && commande.statut !== statut_commande.en_livraison) {
-      throw new ForbiddenException('La commande doit être confirmée ou en livraison pour créer un bon');
+      throw new ForbiddenException('La commande doit être confirmée pour créer un bon de livraison');
     }
 
     const bon = await this.prisma.$transaction(async (tx) => {
@@ -72,26 +65,28 @@ export class LivraisonService {
         data: {
           commande_id: dto.commande_id,
           admin_id: adminId,
-          livreur_id: undefined,
           statut: statut_bon.en_attente,
-          client_nom: commande.client_nom || commande.clients?.nom || '',
-          client_tel: commande.client_tel || commande.clients?.telephone,
-          client_adresse: commande.client_adresse || commande.clients?.adresse,
-          client_region: commande.client_region || commande.clients?.region,
-          date_prevue: dto.date_prevue ? new Date(dto.date_prevue) : undefined,
-          note_admin: dto.note,
-        } as any,
+          client_nom: commande.clients?.nom,
+          client_telephone: commande.clients?.telephone,
+          client_adresse: commande.clients?.adresse,
+          client_ville: commande.clients?.ville,
+          date_livraison_prevue: dto.date_prevue ? new Date(dto.date_prevue) : undefined,
+          note_livraison: dto.note,
+        },
         include: {
           commandes: {
-            select: {
-              id: true,
-              numero: true,
-              client_nom: true,
-              client_tel: true,
-            },
+            include: { clients: { select: { nom: true, telephone: true } } },
           },
         },
       });
+
+      // Retrait du stock à la création du bon (règle métier #2)
+      for (const ligne of commande.lignes_commande) {
+        await tx.produits.update({
+          where: { id: ligne.produit_id },
+          data: { quantite_stock: { decrement: ligne.quantite } },
+        });
+      }
 
       if (commande.statut === statut_commande.confirmee) {
         await tx.commandes.update({
@@ -103,136 +98,210 @@ export class LivraisonService {
       return b;
     });
 
-    return {
-      message: 'Bon de livraison créé avec succès',
-      bon_livraison: bon,
-    };
+    return { message: 'Bon de livraison créé avec succès', bon_livraison: bon };
   }
 
-  async assignerLivreur(adminId: string, bonId: string, livreurId: string) {
-    const bon = await this.prisma.bons_livraison.findFirst({
-      where: { id: bonId, admin_id: adminId },
-    });
+  async findOne(userId: string, role: string, bonId: string) {
+    let bon: any;
 
-    if (!bon) {
-      throw new NotFoundException('Bon de livraison non trouvé');
-    }
-
-    if (bon.statut !== statut_bon.en_attente) {
-      throw new ForbiddenException('Ce bon est déjà pris ou traité');
-    }
-
-    const livreur = await this.prisma.comptes.findFirst({
-      where: {
-        id: livreurId,
-        admin_parent_id: adminId,
-        role: role_compte.livreur,
-        statut: 'actif',
-      },
-      include: {
-        livreurs_free: true,
-      },
-    });
-
-    if (!livreur) {
-      throw new NotFoundException('Livreur non trouvé ou inactif');
-    }
-
-    if (!livreur.livreurs_free || livreur.livreurs_free.length === 0 || !livreur.livreurs_free[0].disponible) {
-      throw new ConflictException('Ce livreur n\'est pas disponible');
-    }
-
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const b = await tx.bons_livraison.update({
-        where: { id: bonId },
-        data: {
-          livreur_id: livreurId,
-          date_prise_en_charge: new Date(),
+    if (role === 'livreur') {
+      bon = await this.prisma.bons_livraison.findFirst({
+        where: {
+          id: bonId,
+          livraisons_livreurs: { some: { livreur_id: userId } },
         },
         include: {
           commandes: {
-            select: {
-              id: true,
-              numero: true,
-              client_nom: true,
-              client_tel: true,
-            },
-          },
-          comptes_bons_livraison_livreur_idTocomptes: {
-            select: {
-              id: true,
-              nom: true,
-              prenom: true,
-              telephone: true,
+            include: {
+              clients: { select: { nom: true, telephone: true, adresse: true, ville: true } },
+              lignes_commande: {
+                include: { produits: { select: { nom: true, reference: true } } },
+              },
             },
           },
         },
       });
-
-      const livreurFree = await tx.livreurs_free.findFirst({
-        where: { compte_id: livreurId },
+    } else {
+      const adminId = await this.prisma.resolveAdminId(userId, role);
+      bon = await this.prisma.bons_livraison.findFirst({
+        where: { id: bonId, admin_id: adminId },
+        include: {
+          commandes: {
+            include: {
+              clients: { select: { id: true, nom: true, telephone: true, adresse: true, ville: true } },
+              lignes_commande: {
+                include: { produits: { select: { nom: true, reference: true } } },
+              },
+            },
+          },
+          livraisons_livreurs: {
+            include: { comptes: { select: { id: true, nom: true, prenom: true, telephone: true } } },
+          },
+        },
       });
-      if (livreurFree) {
-        await tx.livreurs_free.update({
-          where: { id: livreurFree.id },
-          data: { disponible: false },
-        });
-      }
+    }
 
-      return b;
-    });
-
-    return {
-      message: 'Livreur assigné avec succès',
-      bon_livraison: updated,
-    };
+    if (!bon) throw new NotFoundException('Bon de livraison non trouvé');
+    return bon;
   }
 
-  async findOne(adminId: string, bonId: string) {
-    const bon = await this.prisma.bons_livraison.findFirst({
-      where: { id: bonId, admin_id: adminId },
+  // ─── Actions livreur ─────────────────────────────────────────────────────────
+
+  async accepter(livreurId: string, bonId: string) {
+    const assignment = await this.prisma.livraisons_livreurs.findFirst({
+      where: { bon_id: bonId, livreur_id: livreurId },
+      include: { bons_livraison: true },
+    });
+
+    if (!assignment || assignment.bons_livraison.statut !== statut_bon.en_attente) {
+      throw new NotFoundException('Bon de livraison non trouvé ou non assigné');
+    }
+
+    const updated = await this.prisma.bons_livraison.update({
+      where: { id: bonId },
+      data: { statut: statut_bon.en_cours },
       include: {
         commandes: {
+          include: { clients: { select: { nom: true, telephone: true, adresse: true } } },
+        },
+      },
+    });
+
+    return { message: 'Livraison acceptée', bon_livraison: updated };
+  }
+
+  async refuser(livreurId: string, bonId: string) {
+    const assignment = await this.prisma.livraisons_livreurs.findFirst({
+      where: { bon_id: bonId, livreur_id: livreurId },
+      include: {
+        bons_livraison: {
           include: {
-            lignes_commande: {
-              select: {
-                id: true,
-                produit_nom: true,
-                quantite: true,
-              },
-            },
-            clients: {
-              select: {
-                id: true,
-                nom: true,
-                telephone: true,
-                adresse: true,
-              },
-            },
-          },
-        },
-        comptes_bons_livraison_livreur_idTocomptes: {
-          select: {
-            id: true,
-            nom: true,
-            prenom: true,
-            telephone: true,
-          },
-        },
-        transactions: {
-          select: {
-            id: true,
-            montant: true,
-            type: true,
+            commandes: { include: { lignes_commande: true } },
           },
         },
       },
     });
 
-    if (!bon) {
-      throw new NotFoundException('Bon de livraison non trouvé');
+    if (!assignment || assignment.bons_livraison.statut !== statut_bon.en_attente) {
+      throw new NotFoundException('Bon de livraison non trouvé ou statut invalide');
     }
 
-    return bon;
+    const bon = assignment.bons_livraison;
+
+    await this.prisma.$transaction(async (tx) => {
+      // Supprime l'assignment
+      await tx.livraisons_livreurs.delete({ where: { id: assignment.id } });
+
+      // Réintègre le stock (règle métier #3)
+      if (bon.commandes?.lignes_commande) {
+        for (const ligne of bon.commandes.lignes_commande) {
+          await tx.produits.update({
+            where: { id: ligne.produit_id },
+            data: { quantite_stock: { increment: ligne.quantite } },
+          });
+        }
+      }
+
+      // Commande repasse à confirmee (règle métier #3)
+      await tx.commandes.update({
+        where: { id: bon.commande_id },
+        data: { statut: statut_commande.confirmee },
+      });
+
+      // Bon repasse en attente (prêt pour réassignation)
+      await tx.bons_livraison.update({
+        where: { id: bonId },
+        data: { statut: statut_bon.en_attente },
+      });
+    });
+
+    return { message: 'Livraison refusée, stock réintégré', bon_id: bonId };
+  }
+
+  async resultat(livreurId: string, bonId: string, dto: ResultatLivraisonDto) {
+    if (dto.resultat === ResultatLivraison.retour && !dto.motif) {
+      throw new BadRequestException('Le motif est obligatoire en cas de retour');
+    }
+
+    const assignment = await this.prisma.livraisons_livreurs.findFirst({
+      where: { bon_id: bonId, livreur_id: livreurId },
+      include: {
+        bons_livraison: {
+          include: {
+            commandes: {
+              include: { lignes_commande: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!assignment || assignment.bons_livraison.statut !== statut_bon.en_cours) {
+      throw new NotFoundException('Bon de livraison non trouvé (statut doit être "en_cours")');
+    }
+
+    const bon = assignment.bons_livraison;
+
+    await this.prisma.$transaction(async (tx) => {
+      if (dto.resultat === ResultatLivraison.livre) {
+        // Bon → livré
+        await tx.bons_livraison.update({
+          where: { id: bonId },
+          data: { statut: statut_bon.livre, date_livraison_reelle: new Date() },
+        });
+
+        // Commande → livrée
+        await tx.commandes.update({
+          where: { id: bon.commande_id },
+          data: { statut: statut_commande.livree },
+        });
+
+        // Crée la transaction de revenu (règle métier : Si livre → transaction revenu)
+        const montant = bon.commandes?.total_ttc ?? 0;
+        await tx.transactions.create({
+          data: {
+            type: type_transaction.revenu,
+            categorie: categorie_transaction.vente,
+            montant: montant,
+            description: `Vente livrée — bon #${bon.numero_bon}`,
+            commande_id: bon.commande_id,
+            cree_par: livreurId,
+            admin_id: bon.admin_id,
+          },
+        });
+      } else {
+        // Bon → retour
+        await tx.bons_livraison.update({
+          where: { id: bonId },
+          data: {
+            statut: statut_bon.retour,
+            motif_retour: dto.motif,
+            date_livraison_reelle: new Date(),
+          },
+        });
+
+        // Commande → retour (règle métier #4)
+        await tx.commandes.update({
+          where: { id: bon.commande_id },
+          data: { statut: statut_commande.retour },
+        });
+
+        // Réintègre le stock (règle métier #4)
+        if (bon.commandes?.lignes_commande) {
+          for (const ligne of bon.commandes.lignes_commande) {
+            await tx.produits.update({
+              where: { id: ligne.produit_id },
+              data: { quantite_stock: { increment: ligne.quantite } },
+            });
+          }
+        }
+      }
+    });
+
+    return {
+      message: dto.resultat === ResultatLivraison.livre ? 'Livraison confirmée' : 'Retour enregistré',
+      bon_id: bonId,
+      resultat: dto.resultat,
+    };
   }
 }

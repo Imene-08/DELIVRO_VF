@@ -16,26 +16,24 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { role_compte, statut_bon } from '@prisma/client';
 import { CreateLivraisonDto } from './dto/create-livraison.dto';
-import { AssignerLivreurDto } from './dto/assigner-livreur.dto';
+import { ResultatLivraisonDto } from './dto/resultat-livraison.dto';
 
 interface AuthenticatedRequest {
-  user: {
-    userId: string;
-    email: string;
-    role: role_compte;
-  };
+  user: { userId: string; email: string; role: role_compte };
 }
 
-@ApiTags('Admin - Livraisons')
-@Controller('admin')
+@ApiTags('Bons de Livraison')
+@ApiBearerAuth('Bearer')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Controller('livraisons')
 export class LivraisonController {
   constructor(private livraisonService: LivraisonService) {}
 
-  @Get('livraisons')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  // ─── Admin / Employé ─────────────────────────────────────────────────────────
+
+  @Get()
   @Roles(role_compte.admin, role_compte.employe)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Liste tous les bons de livraison' })
+  @ApiOperation({ summary: 'Lister les bons de livraison' })
   @ApiQuery({ name: 'statut', enum: statut_bon, required: false })
   @ApiQuery({ name: 'livreurId', required: false })
   async findAll(
@@ -43,37 +41,47 @@ export class LivraisonController {
     @Query('statut') statut?: statut_bon,
     @Query('livreurId') livreurId?: string,
   ) {
-    return this.livraisonService.findAll(req.user.userId, { statut, livreurId });
+    return this.livraisonService.findAll(req.user.userId, req.user.role, { statut, livreurId });
   }
 
-  @Post('livraisons')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Post()
   @Roles(role_compte.admin, role_compte.employe)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Créer un bon de livraison pour une commande' })
+  @ApiOperation({ summary: 'Créer un bon → stock retiré immédiatement' })
   async create(@Body() dto: CreateLivraisonDto, @Request() req: AuthenticatedRequest) {
-    return this.livraisonService.create(req.user.userId, req.user.userId, dto);
+    return this.livraisonService.create(req.user.userId, req.user.role, dto);
   }
 
-  @Patch('livraisons/:id/assigner')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(role_compte.admin)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Assigner un livreur à un bon de livraison' })
-  async assignerLivreur(
+  @Get(':id')
+  @Roles(role_compte.admin, role_compte.employe, role_compte.livreur)
+  @ApiOperation({ summary: 'Détail d\'un bon' })
+  async findOne(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
+    return this.livraisonService.findOne(req.user.userId, req.user.role, id);
+  }
+
+  // ─── Livreur ─────────────────────────────────────────────────────────────────
+
+  @Patch(':id/accepter')
+  @Roles(role_compte.livreur)
+  @ApiOperation({ summary: 'Livreur accepte la demande' })
+  async accepter(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
+    return this.livraisonService.accepter(req.user.userId, id);
+  }
+
+  @Patch(':id/refuser')
+  @Roles(role_compte.livreur)
+  @ApiOperation({ summary: 'Livreur refuse → stock réintégré' })
+  async refuser(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
+    return this.livraisonService.refuser(req.user.userId, id);
+  }
+
+  @Patch(':id/resultat')
+  @Roles(role_compte.livreur)
+  @ApiOperation({ summary: 'Livré ou retour (motif obligatoire si retour)' })
+  async resultat(
     @Param('id') id: string,
-    @Body() dto: AssignerLivreurDto,
+    @Body() dto: ResultatLivraisonDto,
     @Request() req: AuthenticatedRequest,
   ) {
-    return this.livraisonService.assignerLivreur(req.user.userId, id, dto.livreur_id);
-  }
-
-  @Get('livraisons/:id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(role_compte.admin, role_compte.employe)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Détail d\'un bon de livraison' })
-  async findOne(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
-    return this.livraisonService.findOne(req.user.userId, id);
+    return this.livraisonService.resultat(req.user.userId, id, dto);
   }
 }

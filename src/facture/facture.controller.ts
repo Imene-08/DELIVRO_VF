@@ -1,8 +1,10 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Param,
+  Body,
   Query,
   UseGuards,
   Request,
@@ -13,25 +15,23 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { role_compte, statut_facture } from '@prisma/client';
+import { CreateFactureDto } from './dto/create-facture.dto';
+import { UpdateStatutFactureDto } from './dto/update-statut-facture.dto';
 
 interface AuthenticatedRequest {
-  user: {
-    userId: string;
-    email: string;
-    role: role_compte;
-  };
+  user: { userId: string; email: string; role: role_compte };
 }
 
-@ApiTags('Admin - Factures')
-@Controller('admin')
+@ApiTags('Factures')
+@ApiBearerAuth('Bearer')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(role_compte.admin, role_compte.employe)
+@Controller('factures')
 export class FactureController {
   constructor(private factureService: FactureService) {}
 
-  @Get('factures')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(role_compte.admin, role_compte.employe)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Liste des factures avec filtres par statut' })
+  @Get()
+  @ApiOperation({ summary: 'Lister les factures' })
   @ApiQuery({ name: 'statut', enum: statut_facture, required: false })
   @ApiQuery({ name: 'clientId', required: false })
   @ApiQuery({ name: 'search', required: false })
@@ -41,24 +41,28 @@ export class FactureController {
     @Query('clientId') clientId?: string,
     @Query('search') search?: string,
   ) {
-    return this.factureService.findAll(req.user.userId, { statut, clientId, search });
+    return this.factureService.findAll(req.user.userId, req.user.role, { statut, clientId, search });
   }
 
-  @Get('factures/:id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(role_compte.admin, role_compte.employe)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Détail d\'une facture avec commande et transactions' })
+  @Post()
+  @ApiOperation({ summary: 'Créer une facture depuis commande livrée' })
+  async create(@Body() dto: CreateFactureDto, @Request() req: AuthenticatedRequest) {
+    return this.factureService.create(req.user.userId, req.user.role, dto);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Détail + aperçu PDF' })
   async findOne(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
-    return this.factureService.findOne(req.user.userId, id);
+    return this.factureService.findOne(req.user.userId, req.user.role, id);
   }
 
-  @Patch('factures/:id/payer')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(role_compte.admin, role_compte.employe)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Marquer une facture comme payée et créer la transaction correspondante' })
-  async marquerPayee(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
-    return this.factureService.marquerPayee(id, req.user.userId, req.user.userId);
+  @Patch(':id/statut')
+  @ApiOperation({ summary: 'Changer statut (payée/annulée)' })
+  async updateStatut(
+    @Param('id') id: string,
+    @Body() dto: UpdateStatutFactureDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.factureService.updateStatut(req.user.userId, req.user.role, id, dto);
   }
 }

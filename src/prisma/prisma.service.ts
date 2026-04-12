@@ -19,4 +19,21 @@ export class PrismaService
   async onModuleDestroy() {
     await this.$disconnect();
   }
+
+  /**
+   * Résout l'ID admin effectif selon le rôle :
+   * - super_admin → retourne userId (accès global)
+   * - admin → retourne son propre ID
+   * - employe → retourne l'admin_parent_id
+   */
+  async resolveAdminId(userId: string, role: string): Promise<string> {
+    if (role === 'employe') {
+      const compte = await this.comptes.findUnique({
+        where: { id: userId },
+        select: { admin_parent_id: true },
+      });
+      return compte?.admin_parent_id ?? userId;
+    }
+    return userId;
+  }
 }

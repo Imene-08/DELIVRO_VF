@@ -1,7 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { role_compte } from '@prisma/client';
 import { Request } from 'express';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TokenBlacklistService } from '../token-blacklist.service';
@@ -9,7 +8,7 @@ import { TokenBlacklistService } from '../token-blacklist.service';
 interface JwtPayload {
   sub: string;
   email: string;
-  role: role_compte;
+  role: string;
 }
 
 @Injectable()
@@ -33,22 +32,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Token révoqué');
     }
 
-    const user = await this.prisma.comptes.findUnique({
-      where: { id: payload.sub },
-    });
+    const user = await this.prisma.comptes.findUnique({ where: { id: payload.sub } });
+    if (!user) throw new UnauthorizedException('Utilisateur non trouvé');
+    if (user.statut !== 'actif') throw new UnauthorizedException('Compte inactif ou suspendu');
 
-    if (!user) {
-      throw new UnauthorizedException();
-    }
-
-    if (user.statut !== 'actif') {
-      throw new UnauthorizedException('Compte inactif ou suspendu');
-    }
-
-    return {
-      userId: payload.sub,
-      email: payload.email,
-      role: payload.role,
-    };
+    return { userId: payload.sub, email: payload.email, role: payload.role };
   }
 }
