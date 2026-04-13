@@ -6,9 +6,11 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { RolesGuard } from './guards/roles.guard';
 import { TokenBlacklistService } from './token-blacklist.service';
+import { PrismaModule } from '../prisma/prisma.module'; // ← AJOUTEZ CETTE LIGNE
 
 @Module({
   imports: [
+    PrismaModule, // ← AJOUTEZ CETTE LIGNE
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'default-secret',

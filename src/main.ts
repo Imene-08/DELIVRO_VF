@@ -6,7 +6,12 @@ import { ValidationPipe } from '@nestjs/common';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+    }),
+  );
 
   app.setGlobalPrefix('api');
 
@@ -25,7 +30,13 @@ async function bootstrap() {
     swaggerOptions: { persistAuthorization: true },
   });
 
-  await app.listen(process.env.PORT ?? 3000);
-  console.log(`Swagger disponible sur http://localhost:${process.env.PORT ?? 3000}/swagger`);
+  // 🔥 IMPORTANT
+  const port = process.env.PORT || 3001;
+
+  await app.listen(port);
+
+  console.log(`🚀 Server running on http://localhost:${port}`);
+  console.log(`📘 Swagger: http://localhost:${port}/swagger`);
 }
-void bootstrap();
+
+bootstrap();
