@@ -15,6 +15,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { role_compte } from '@prisma/client';
 import { Request as ExpressRequest } from 'express';
 import { ExtractJwt } from 'passport-jwt';
+import { CreateSuperAdminDto } from '../super-admin/dto/create-super-admin.dto';
 
 interface AuthenticatedRequest extends ExpressRequest {
   user: {
@@ -28,6 +29,17 @@ interface AuthenticatedRequest extends ExpressRequest {
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
+
+  @Post('super-admin/register')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Enregistrement initial du super admin (bootstrap)',
+    description:
+      "Crée le premier compte super admin. Bloqué si un super admin existe déjà. Retourne un JWT directement.",
+  })
+  async registerSuperAdmin(@Body() dto: CreateSuperAdminDto) {
+    return this.authService.registerSuperAdmin(dto);
+  }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)

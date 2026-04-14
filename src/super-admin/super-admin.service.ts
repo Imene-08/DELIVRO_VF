@@ -1,6 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ConflictException } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { role_compte, statut_compte, statut_abonnement, statut_facture } from '@prisma/client';
+import { CreateSuperAdminDto } from './dto/create-super-admin.dto';
 
 @Injectable()
 export class SuperAdminService {
@@ -95,6 +97,42 @@ export class SuperAdminService {
         })),
       },
     };
+  }
+
+  async createSuperAdmin(dto: CreateSuperAdminDto) {
+    const existing = await this.prisma.comptes.findUnique({
+      where: { email: dto.email },
+    });
+
+    if (existing) {
+      throw new ConflictException('Un compte avec cet email existe déjà');
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.mot_de_passe, 10);
+
+    const superAdmin = await this.prisma.comptes.create({
+      data: {
+        nom: dto.nom,
+        prenom: dto.prenom,
+        email: dto.email,
+        telephone: dto.telephone,
+        mot_de_passe: hashedPassword,
+        role: role_compte.super_admin,
+        statut: statut_compte.actif,
+      },
+      select: {
+        id: true,
+        nom: true,
+        prenom: true,
+        email: true,
+        telephone: true,
+        role: true,
+        statut: true,
+        cree_le: true,
+      },
+    });
+
+    return superAdmin;
   }
 
   async findAllLivreurs() {

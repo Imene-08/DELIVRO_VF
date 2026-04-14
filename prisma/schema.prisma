@@ -164,7 +164,7 @@ model lignes_commande {
   produit_id    String    @db.Uuid
   quantite      Int
   prix_unitaire Decimal   @db.Decimal(12, 2)
-  sous_total    Decimal?  @default(dbgenerated("((quantite)::numeric * prix_unitaire)")) @db.Decimal(12, 2)
+  sous_total    Decimal?  @db.Decimal(12, 2)
   commandes     commandes @relation(fields: [commande_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   produits      produits  @relation(fields: [produit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
@@ -182,7 +182,7 @@ model produits {
   seuil_moyen     Int               @default(20)
   seuil_plein     Int               @default(50)
   attributs       Json?
-  niveau_actuel   niveau_stock?     @default(dbgenerated("\nCASE\n    WHEN (quantite_stock = 0) THEN 'vide'::niveau_stock\n    WHEN (quantite_stock <= seuil_bas) THEN 'bas'::niveau_stock\n    WHEN (quantite_stock <= seuil_moyen) THEN 'moyen'::niveau_stock\n    ELSE 'plein'::niveau_stock\nEND"))
+  niveau_actuel   niveau_stock?
   categorie_id    String?           @db.Uuid
   lieu_id         String?           @db.Uuid
   admin_id        String            @db.Uuid

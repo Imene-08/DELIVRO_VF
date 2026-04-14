@@ -1,12 +1,18 @@
 import {
   Injectable,
   UnauthorizedException,
+  InternalServerErrorException,
+  ForbiddenException,
+  ConflictException,
+  HttpException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { TokenBlacklistService } from './token-blacklist.service';
+import { CreateSuperAdminDto } from '../super-admin/dto/create-super-admin.dto';
+import { role_compte, statut_compte } from '@prisma/client';
 
 const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_LOCK_DURATION_MS = 15 * 60 * 1000;
@@ -98,11 +104,11 @@ export class AuthService {
         },
       };
     } catch (error) {
-      // 🔥 DEBUG (TRÈS IMPORTANT)
+      if (error instanceof HttpException) {
+        throw error;
+      }
       console.error('LOGIN ERROR =>', error);
-
-      // ⚠️ retourner l'erreur réelle (pas masquer)
-      throw error;
+      throw new InternalServerErrorException('Erreur interne du serveur');
     }
   }
 
@@ -128,6 +134,61 @@ export class AuthService {
       : Date.now() + 24 * 60 * 60 * 1000;
 
     this.blacklist.add(token, expiresAt);
+  }
+
+  async registerSuperAdmin(dto: CreateSuperAdminDto) {
+    const existingSuperAdmin = await this.prisma.comptes.findFirst({
+      where: { role: role_compte.super_admin },
+    });
+
+    if (existingSuperAdmin) {
+      throw new ForbiddenException(
+        "Un super admin existe déjà. Utilisez l'interface protégée pour en créer un autre.",
+      );
+    }
+
+    const existingEmail = await this.prisma.comptes.findUnique({
+      where: { email: dto.email },
+    });
+
+    if (existingEmail) {
+      throw new ConflictException('Un compte avec cet email existe déjà');
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.mot_de_passe, 10);
+
+    const superAdmin = await this.prisma.comptes.create({
+      data: {
+        nom: dto.nom,
+        prenom: dto.prenom,
+        email: dto.email,
+        telephone: dto.telephone,
+        mot_de_passe: hashedPassword,
+        role: role_compte.super_admin,
+        statut: statut_compte.actif,
+      },
+      select: {
+        id: true,
+        nom: true,
+        prenom: true,
+        email: true,
+        telephone: true,
+        role: true,
+        statut: true,
+        cree_le: true,
+      },
+    });
+
+    const payload = {
+      sub: superAdmin.id,
+      email: superAdmin.email,
+      role: superAdmin.role,
+    };
+
+    return {
+      access_token: this.jwtService.sign(payload),
+      user: superAdmin,
+    };
   }
 
   async getProfile(userId: string) {

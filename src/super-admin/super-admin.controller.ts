@@ -1,10 +1,11 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { SuperAdminService } from './super-admin.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { SUPER_ADMIN } from '../auth/roles.constants';
+import { CreateSuperAdminDto } from './dto/create-super-admin.dto';
 
 @ApiTags('Super Admin — Vue Globale')
 @ApiBearerAuth('Bearer')
@@ -13,6 +14,12 @@ import { SUPER_ADMIN } from '../auth/roles.constants';
 @Controller('super')
 export class SuperAdminController {
   constructor(private superAdminService: SuperAdminService) {}
+
+  @Post('create-super-admin')
+  @ApiOperation({ summary: 'Créer un nouveau compte super admin' })
+  async createSuperAdmin(@Body() dto: CreateSuperAdminDto) {
+    return this.superAdminService.createSuperAdmin(dto);
+  }
 
   @Get('dashboard')
   @ApiOperation({ summary: 'Métriques globales + livreurs actifs' })
