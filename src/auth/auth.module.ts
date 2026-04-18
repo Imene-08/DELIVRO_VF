@@ -12,9 +12,12 @@ import { PrismaModule } from '../prisma/prisma.module'; // ← AJOUTEZ CETTE LIG
   imports: [
     PrismaModule, // ← AJOUTEZ CETTE LIGNE
     PassportModule.register({ defaultStrategy: 'jwt' }),
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'default-secret',
-      signOptions: { expiresIn: '24h' },
+    JwtModule.registerAsync({
+      useFactory: () => {
+        const secret = process.env.JWT_SECRET;
+        if (!secret) throw new Error('JWT_SECRET environment variable is required');
+        return { secret, signOptions: { expiresIn: '24h' } };
+      },
     }),
   ],
   controllers: [AuthController],

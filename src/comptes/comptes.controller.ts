@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Put,
   Delete,
   Body,
   Param,
@@ -17,6 +18,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { SUPER_ADMIN } from '../auth/roles.constants';
 import { role_compte } from '@prisma/client';
 import { CreateEmployeDto } from './dto/create-employe.dto';
+import { UpdateEmployeDto } from './dto/update-employe.dto';
 import { CreateCompteDto } from './dto/create-compte.dto';
 import { UpdateStatutCompteDto } from './dto/update-statut.dto';
 
@@ -35,7 +37,7 @@ export class ComptesController {
 
   @Post()
   @Roles(SUPER_ADMIN)
-  @ApiOperation({ summary: 'Créer un compte admin, employé ou livreur' })
+  @ApiOperation({ summary: 'Créer un compte employé ou livreur (les admins → POST /super/admins)' })
   async createCompte(@Body() dto: CreateCompteDto, @Request() req: AuthenticatedRequest) {
     return this.comptesService.createCompte(req.user.userId, dto);
   }
@@ -86,5 +88,26 @@ export class ComptesController {
     @Request() req: AuthenticatedRequest,
   ) {
     return this.comptesService.updateStatutEmploye(req.user.userId, id, dto);
+  }
+
+  @Put('employes/:id')
+  @Roles(role_compte.admin)
+  @ApiOperation({ summary: 'Modifier les informations d\'un de ses employés' })
+  async updateEmploye(
+    @Param('id') id: string,
+    @Body() dto: UpdateEmployeDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.comptesService.updateEmploye(req.user.userId, id, dto);
+  }
+
+  @Delete('employes/:id')
+  @Roles(role_compte.admin)
+  @ApiOperation({ summary: 'Supprimer un de ses employés' })
+  async deleteEmploye(
+    @Param('id') id: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.comptesService.deleteEmploye(req.user.userId, id);
   }
 }

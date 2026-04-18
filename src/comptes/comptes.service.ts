@@ -2,11 +2,13 @@ import {
   Injectable,
   ConflictException,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { role_compte, statut_compte } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { CreateEmployeDto } from './dto/create-employe.dto';
+import { UpdateEmployeDto } from './dto/update-employe.dto';
 import { CreateCompteDto } from './dto/create-compte.dto';
 import { UpdateStatutCompteDto } from './dto/update-statut.dto';
 
@@ -17,6 +19,23 @@ export class ComptesService {
   // ─── Super Admin ─────────────────────────────────────────────────────────────
 
   async createCompte(superAdminId: string, dto: CreateCompteDto) {
+    if (dto.role === role_compte.admin || dto.role === role_compte.super_admin) {
+      throw new BadRequestException(
+        "La création d'un compte admin passe par POST /api/super/admins.",
+      );
+    }
+
+    // Un employé doit être rattaché à un admin existant
+    if (dto.role === role_compte.employe) {
+      if (!dto.admin_parent_id) {
+        throw new BadRequestException("admin_parent_id est obligatoire pour un employé.");
+      }
+      const admin = await this.prisma.comptes.findFirst({
+        where: { id: dto.admin_parent_id, role: role_compte.admin },
+      });
+      if (!admin) throw new NotFoundException('Admin introuvable ou ID invalide');
+    }
+
     const existing = await this.prisma.comptes.findUnique({ where: { email: dto.email } });
     if (existing) throw new ConflictException('Cet email est déjà utilisé');
 
@@ -31,8 +50,10 @@ export class ComptesService {
         mot_de_passe: hashedPassword,
         role: dto.role,
         statut: statut_compte.actif,
+        // Livreur : pas de rattachement admin
+        ...(dto.role === role_compte.employe && { admin_parent_id: dto.admin_parent_id }),
       },
-      select: { id: true, nom: true, prenom: true, email: true, telephone: true, role: true, statut: true, cree_le: true },
+      select: { id: true, nom: true, prenom: true, email: true, telephone: true, role: true, statut: true, admin_parent_id: true, cree_le: true },
     });
 
     return { message: 'Compte créé avec succès', compte };
@@ -134,5 +155,34 @@ export class ComptesService {
       select: { id: true, nom: true, email: true, statut: true },
     });
     return { message: `Employé ${dto.statut} avec succès`, employe: updated };
+  }
+
+  async updateEmploye(adminId: string, employeId: string, dto: UpdateEmployeDto) {
+    const employe = await this.prisma.comptes.findFirst({
+      where: { id: employeId, admin_parent_id: adminId, role: role_compte.employe },
+    });
+    if (!employe) throw new NotFoundException('Employé non trouvé ou non autorisé');
+
+    if (dto.email && dto.email !== employe.email) {
+      const existing = await this.prisma.comptes.findUnique({ where: { email: dto.email } });
+      if (existing) throw new ConflictException('Cet email est déjà utilisé');
+    }
+
+    const updated = await this.prisma.comptes.update({
+      where: { id: employeId },
+      data: dto,
+      select: { id: true, nom: true, prenom: true, email: true, telephone: true, statut: true, modifie_le: true },
+    });
+    return { message: 'Employé mis à jour avec succès', employe: updated };
+  }
+
+  async deleteEmploye(adminId: string, employeId: string) {
+    const employe = await this.prisma.comptes.findFirst({
+      where: { id: employeId, admin_parent_id: adminId, role: role_compte.employe },
+    });
+    if (!employe) throw new NotFoundException('Employé non trouvé ou non autorisé');
+
+    await this.prisma.comptes.delete({ where: { id: employeId } });
+    return { message: 'Employé supprimé avec succès' };
   }
 }

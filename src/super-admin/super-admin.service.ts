@@ -1,8 +1,15 @@
 import { Injectable, ConflictException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
-import { role_compte, statut_compte, statut_abonnement, statut_facture } from '@prisma/client';
+import { role_compte, statut_compte, statut_abonnement, statut_facture, plan_abonnement } from '@prisma/client';
 import { CreateSuperAdminDto } from './dto/create-super-admin.dto';
+import { CreateAdminDto } from './dto/create-admin.dto';
+
+const PRIX_PAR_PLAN: Record<plan_abonnement, number> = {
+  starter: 49,
+  pro: 99,
+  business: 199,
+};
 
 @Injectable()
 export class SuperAdminService {
@@ -133,6 +140,72 @@ export class SuperAdminService {
     });
 
     return superAdmin;
+  }
+
+  async createAdmin(dto: CreateAdminDto) {
+    const existing = await this.prisma.comptes.findUnique({
+      where: { email: dto.email },
+    });
+
+    if (existing) {
+      throw new ConflictException('Un compte avec cet email existe déjà');
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.mot_de_passe, 10);
+
+    const dateDebut = new Date();
+    const dateEcheance = dto.date_echeance
+      ? new Date(dto.date_echeance)
+      : new Date(dateDebut.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    const prix = PRIX_PAR_PLAN[dto.plan];
+
+    const [compte, abonnement] = await this.prisma.$transaction(async (tx) => {
+      const newCompte = await tx.comptes.create({
+        data: {
+          nom: dto.nom,
+          prenom: dto.prenom,
+          email: dto.email,
+          telephone: dto.telephone,
+          mot_de_passe: hashedPassword,
+          role: role_compte.admin,
+          statut: statut_compte.actif,
+        },
+        select: {
+          id: true,
+          nom: true,
+          prenom: true,
+          email: true,
+          telephone: true,
+          role: true,
+          statut: true,
+          cree_le: true,
+        },
+      });
+
+      const newAbonnement = await tx.abonnements.create({
+        data: {
+          admin_id: newCompte.id,
+          plan: dto.plan,
+          prix_mensuel: prix,
+          statut: statut_abonnement.actif,
+          date_debut: dateDebut,
+          date_echeance: dateEcheance,
+        },
+        select: {
+          id: true,
+          plan: true,
+          prix_mensuel: true,
+          statut: true,
+          date_debut: true,
+          date_echeance: true,
+        },
+      });
+
+      return [newCompte, newAbonnement];
+    });
+
+    return { compte, abonnement };
   }
 
   async findAllLivreurs() {

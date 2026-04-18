@@ -1,10 +1,21 @@
 import { Controller, Get, Query, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { IsOptional, IsISO8601 } from 'class-validator';
 import { StatsService } from './stats.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { role_compte } from '@prisma/client';
+
+class StatsDateQueryDto {
+  @IsOptional()
+  @IsISO8601()
+  debut?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  fin?: string;
+}
 
 interface AuthenticatedRequest {
   user: { userId: string; email: string; role: role_compte };
@@ -24,10 +35,9 @@ export class StatsController {
   @ApiQuery({ name: 'fin', required: false, example: '2024-12-31' })
   async getStats(
     @Request() req: AuthenticatedRequest,
-    @Query('debut') debut?: string,
-    @Query('fin') fin?: string,
+    @Query() query: StatsDateQueryDto,
   ) {
-    return this.statsService.getStatsGlobales(req.user.userId, { debut, fin });
+    return this.statsService.getStatsGlobales(req.user.userId, { debut: query.debut, fin: query.fin });
   }
 
   @Get('regions')

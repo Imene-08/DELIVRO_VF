@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength, IsOptional, IsEnum } from 'class-validator';
+import { IsEmail, IsString, MinLength, IsOptional, IsIn, IsUUID, Matches } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { role_compte } from '@prisma/client';
 
@@ -12,7 +12,7 @@ export class CreateCompteDto {
   @IsString()
   prenom?: string;
 
-  @ApiProperty({ example: 'admin@example.com' })
+  @ApiProperty({ example: 'employe@example.com' })
   @IsEmail()
   email: string;
 
@@ -21,12 +21,29 @@ export class CreateCompteDto {
   @IsString()
   telephone?: string;
 
-  @ApiProperty({ example: 'password123' })
+  @ApiProperty({ example: 'Password1!' })
   @IsString()
-  @MinLength(6)
+  @MinLength(8)
+  @Matches(/^(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?])/, {
+    message: 'mot_de_passe must contain at least one uppercase letter, one number, and one special character',
+  })
   mot_de_passe: string;
 
-  @ApiProperty({ enum: role_compte, example: role_compte.admin })
-  @IsEnum(role_compte)
+  @ApiProperty({
+    enum: [role_compte.employe, role_compte.livreur],
+    example: role_compte.employe,
+    description: 'Seuls employe et livreur sont autorisés ici.',
+  })
+  @IsIn([role_compte.employe, role_compte.livreur], {
+    message: 'role doit être employe ou livreur.',
+  })
   role: role_compte;
+
+  @ApiPropertyOptional({
+    example: 'uuid-de-l-admin',
+    description: 'Obligatoire si role=employe. Ignoré si role=livreur (le livreur est indépendant).',
+  })
+  @IsOptional()
+  @IsUUID()
+  admin_parent_id?: string;
 }
